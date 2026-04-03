@@ -6,6 +6,21 @@
     <title>English Learning Toolkit</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+<script>
+        const correctPassword = "neko"; // ★ここに好きなパスワードを設定（半角英数字）
+        const noteArticleUrl = "https://note.com/hiro_king_oo"; // ★パスワードを間違えた時に飛ばすNote記事のURL
+
+        let userPassword = sessionStorage.getItem("app_auth");
+        if (userPassword !== correctPassword) {
+            let input = prompt("記事の購入者専用アプリです。\nパスワードを入力してください:");
+            if (input === correctPassword) {
+                sessionStorage.setItem("app_auth", correctPassword);
+            } else {
+                alert("パスワードが違います。記事のページに戻ります。");
+                window.location.href = noteArticleUrl;
+            }
+        }
+    </script>
 </head>
 <body class="bg-slate-50 min-h-screen p-4 md:p-8 font-sans text-gray-800">
     <div class="max-w-4xl mx-auto">
