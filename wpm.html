@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WPM Tracker (読解スピード測定)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-50 min-h-screen p-4 md:p-8 font-sans text-gray-800">
+    <div class="max-w-3xl mx-auto bg-white rounded-2xl shadow-xl p-6 md:p-8">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-indigo-600 mb-2">
+                <i class="fas fa-bolt mr-2"></i>WPM Tracker
+            </h1>
+            <p class="text-gray-500 font-medium">英語の読解スピード（Words Per Minute）を計測します</p>
+        </div>
+
+        <div class="mb-6">
+            <div class="flex justify-between items-end mb-2">
+                <label for="text-input" class="text-sm font-bold text-gray-700">英文テキスト</label>
+                <div class="text-right bg-indigo-50 px-3 py-1 rounded-full text-xs font-bold text-indigo-600">
+                    単語数: <span id="word-count">0</span> words
+                </div>
+            </div>
+            <textarea id="text-input" rows="8" 
+                class="w-full p-4 border border-gray-200 rounded-xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 transition-all text-gray-700 leading-relaxed text-lg mb-4" 
+                placeholder="ここに英文を貼り付けてください..."></textarea>
+
+            <button id="set-sample-btn" class="text-xs text-indigo-500 hover:text-indigo-700 font-bold transition-colors">
+                <i class="fas fa-file-alt mr-1"></i> サンプル英文（Ken's Desk）をセットする
+            </button>
+        </div>
+
+        <div class="bg-slate-900 rounded-2xl p-8 mb-8 text-center shadow-lg border-4 border-slate-800">
+            <div class="text-xs uppercase tracking-widest text-slate-400 mb-2 font-bold">Elapsed Time</div>
+            <div class="text-6xl font-mono text-white tracking-tighter" id="timer-display">
+                00:00<span class="text-3xl text-slate-500">.0</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8">
+            <button id="start-btn" class="flex items-center justify-center gap-2 px-6 py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-black rounded-xl shadow-lg hover:shadow-emerald-200 transition-all transform active:scale-95">
+                <i class="fas fa-play"></i> START
+            </button>
+            <button id="stop-btn" class="flex items-center justify-center gap-2 px-6 py-4 bg-rose-500 hover:bg-rose-600 text-white font-black rounded-xl shadow-lg hover:shadow-rose-200 transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                <i class="fas fa-stop"></i> STOP
+            </button>
+            <button id="reset-btn" class="col-span-2 sm:col-span-1 flex items-center justify-center gap-2 px-6 py-4 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl transition-all active:scale-95">
+                <i class="fas fa-redo"></i> RESET
+            </button>
+        </div>
+
+        <div id="result-card" class="hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div class="bg-indigo-600 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
+                <i class="fas fa-trophy absolute -right-4 -bottom-4 text-9xl opacity-10"></i>
+                <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+                    <i class="fas fa-chart-line"></i> あなたのスコア
+                </h2>
+                <div class="grid grid-cols-3 gap-2 text-center">
+                    <div class="bg-indigo-500/50 rounded-xl p-4 backdrop-blur-sm">
+                        <div class="text-4xl font-black mb-1" id="result-wpm">0</div>
+                        <div class="text-[10px] font-bold uppercase tracking-tighter opacity-80">WPM</div>
+                    </div>
+                    <div class="bg-white/10 rounded-xl p-4">
+                        <div class="text-2xl font-bold mb-1" id="result-words">0</div>
+                        <div class="text-[10px] font-bold uppercase tracking-tighter opacity-80">Words</div>
+                    </div>
+                    <div class="bg-white/10 rounded-xl p-4">
+                        <div class="text-2xl font-bold mb-1" id="result-time">0.0</div>
+                        <div class="text-[10px] font-bold uppercase tracking-tighter opacity-80">Seconds</div>
+                    </div>
+                </div>
+
+                <div class="mt-6 pt-6 border-t border-white/20">
+                    <div id="feedback-text" class="text-sm font-medium italic"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let startTime = 0;
+        let elapsedTime = 0;
+        let timerInterval = null;
+        let isRunning = false;
+
+        const textInput = document.getElementById('text-input');
+        const wordCountDisplay = document.getElementById('word-count');
+        const timerDisplay = document.getElementById('timer-display');
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const setSampleBtn = document.getElementById('set-sample-btn');
+        const resultCard = document.getElementById('result-card');
+        const resultWpm = document.getElementById('result-wpm');
+        const resultWords = document.getElementById('result-words');
+        const resultTime = document.getElementById('result-time');
+        const feedbackText = document.getElementById('feedback-text');
+
+        const sampleText = `Ken is a young student. He wants to study English today. But, he has a big problem. His room is very messy. His desk is too cluttered with many things. He sees a big pile of old homework, comics, and clothes on the right. Because of this mess, he cannot concentrate on his school work.\n\nMany toys and video games are on the desk, too. They are a big distraction for him. He looks at his desk and says, "I must tidy up my room right now."\n\nFirst, he puts his toys in a large box. Then, he needs to organize his papers and pencils. He puts his pens in a small pen case and throws away old papers.\n\nKen has a very good reference book for his English test. He puts the book on the clean desk. Now, the desk is beautiful and quiet. There are no toys on it. Ken is very happy.\n\nHe sits on his chair and opens his book. Now he can read and write very well. A clean workspace makes him very productive. He finishes his study fast and goes out to play.`;
+
+        function getWordCount(text) {
+            const cleanText = text.trim();
+            if (!cleanText) return 0;
+            return cleanText.split(/\s+/).length;
+        }
+
+        function updateWordCountDisplay() {
+            wordCountDisplay.textContent = getWordCount(textInput.value);
+        }
+
+        textInput.value = sampleText;
+        updateWordCountDisplay();
+        textInput.addEventListener('input', updateWordCountDisplay);
+
+        setSampleBtn.addEventListener('click', () => {
+            textInput.value = sampleText;
+            updateWordCountDisplay();
+            if(!isRunning) resetApp();
+        });
+
+        function updateTimer() {
+            elapsedTime = Date.now() - startTime;
+            const seconds = (elapsedTime / 1000).toFixed(1);
+            const minutes = Math.floor(seconds / 60);
+            const remainSeconds = (seconds % 60).toFixed(1);
+
+            const mStr = String(minutes).padStart(2, '0');
+            const [sMain, sSub] = remainSeconds.split('.');
+            const sStr = sMain.padStart(2, '0');
+
+            timerDisplay.innerHTML = `${mStr}:${sStr}<span class="text-3xl text-slate-500">.${sSub}</span>`;
+        }
+
+        startBtn.addEventListener('click', () => {
+            if (getWordCount(textInput.value) === 0) {
+                alert("英文を入力してください。");
+                return;
+            }
+            if (!isRunning) {
+                isRunning = true;
+                startTime = Date.now() - elapsedTime;
+                timerInterval = setInterval(updateTimer, 100);
+
+                startBtn.disabled = true;
+                startBtn.classList.add('opacity-50', 'pointer-events-none');
+                stopBtn.disabled = false;
+                textInput.disabled = true;
+                textInput.classList.add('bg-slate-50', 'text-slate-400');
+                resultCard.classList.add('hidden');
+            }
+        });
+
+        stopBtn.addEventListener('click', () => {
+            if (isRunning) {
+                clearInterval(timerInterval);
+                isRunning = false;
+
+                const words = getWordCount(textInput.value);
+                const timeInSeconds = elapsedTime / 1000;
+                const wpm = Math.round((words / timeInSeconds) * 60);
+
+                resultWpm.textContent = wpm;
+                resultWords.textContent = words;
+                resultTime.textContent = timeInSeconds.toFixed(1);
+
+                if (wpm < 100) feedbackText.textContent = "基礎をしっかり固めていきましょう。何度も声に出して読んでみるのがおすすめです！";
+                else if (wpm < 150) feedbackText.textContent = "標準的な読解スピードです。この調子で多読を続けていきましょう！";
+                else if (wpm < 200) feedbackText.textContent = "素晴らしいスピードです！ネイティブに近い読解速度に近づいています。";
+                else feedbackText.textContent = "驚異的なスピードです！もはやプロレベルの読解力ですね。";
+
+                resultCard.classList.remove('hidden');
+
+                startBtn.disabled = false;
+                startBtn.classList.remove('opacity-50', 'pointer-events-none');
+                startBtn.innerHTML = '<i class="fas fa-play"></i> RESTART';
+                stopBtn.disabled = true;
+                textInput.disabled = false;
+                textInput.classList.remove('bg-slate-50', 'text-slate-400');
+            }
+        });
+
+        function resetApp() {
+            clearInterval(timerInterval);
+            isRunning = false;
+            elapsedTime = 0;
+            timerDisplay.innerHTML = `00:00<span class="text-3xl text-slate-500">.0</span>`;
+
+            startBtn.disabled = false;
+            startBtn.classList.remove('opacity-50', 'pointer-events-none');
+            startBtn.innerHTML = '<i class="fas fa-play"></i> START';
+            stopBtn.disabled = true;
+            textInput.disabled = false;
+            textInput.classList.remove('bg-slate-50', 'text-slate-400');
+            resultCard.classList.add('hidden');
+        }
+
+        resetBtn.addEventListener('click', resetApp);
+    </script>
+</body>
+</html>

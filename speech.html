@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>1-Minute Speech Practice</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @keyframes ripple {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .recording-active {
+            animation: ripple 1.5s infinite;
+            background-color: #ef4444 !important;
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen p-4 md:p-8 font-sans text-gray-800">
+    <div class="max-w-3xl mx-auto bg-white rounded-2xl shadow-xl p-6 md:p-8">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-indigo-600 mb-2">
+                <i class="fas fa-microphone-alt mr-2"></i>1-Minute Speech Practice
+            </h1>
+            <p class="text-gray-500">1分間の英語スピーチを録音し、文字起こしで確認しましょう</p>
+        </div>
+
+        <div id="recording-area" class="bg-slate-100 rounded-xl p-8 mb-8 text-center border border-slate-200 shadow-inner relative overflow-hidden">
+            <div id="progress-bar" class="absolute bottom-0 left-0 h-2 bg-indigo-500 transition-all duration-1000 ease-linear" style="width: 100%;"></div>
+            <div class="text-7xl font-mono text-slate-800 mb-8 font-light tracking-widest" id="timer-display">01:00</div>
+            <div class="flex flex-col items-center justify-center gap-4">
+                <button id="record-btn" class="w-24 h-24 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex flex-col items-center justify-center transform hover:scale-105">
+                    <i class="fas fa-microphone text-3xl mb-1"></i>
+                    <span class="text-xs font-bold uppercase tracking-wider">Start</span>
+                </button>
+                <p id="status-text" class="text-sm font-medium text-slate-500 h-5">準備完了</p>
+            </div>
+        </div>
+
+        <div id="live-transcription-area" class="mb-8 hidden">
+            <h3 class="text-sm font-bold text-gray-500 mb-2 flex items-center gap-2">
+                <i class="fas fa-wave-square text-indigo-400"></i> 現在の文字起こし
+            </h3>
+            <div class="bg-indigo-50 rounded-xl p-4 border border-indigo-100 min-h-[100px]">
+                <p id="final-text" class="text-gray-800 text-lg leading-relaxed inline"></p>
+                <span id="interim-text" class="text-indigo-400 text-lg leading-relaxed italic"></span>
+            </div>
+        </div>
+
+        <div id="results-section" class="hidden">
+            <div class="flex items-center justify-between mb-4 border-b border-gray-200 pb-2">
+                <h2 class="text-xl font-bold text-gray-700">
+                    <i class="fas fa-history text-indigo-500 mr-2"></i>録音結果
+                </h2>
+                <button id="clear-history-btn" class="text-sm text-rose-500 hover:text-rose-700 font-medium px-3 py-1 rounded hover:bg-rose-50 transition-colors cursor-pointer">
+                    <i class="fas fa-trash-alt mr-1"></i>履歴をクリア
+                </button>
+            </div>
+            <div id="history-list" class="space-y-4 max-h-[800px] overflow-y-auto custom-scrollbar pr-2 pb-4"></div>
+        </div>
+
+        <div id="unsupported-msg" class="hidden mt-6 bg-amber-50 rounded-lg p-4 text-sm text-amber-700 border border-amber-200 flex items-start gap-3">
+            <i class="fas fa-exclamation-triangle mt-1"></i>
+            <div>
+                <p class="font-bold mb-1">文字起こし機能について</p>
+                <p>お使いのブラウザ（iOS Safariなど）では、自動文字起こし機能が動作しない場合があります。録音機能はご利用いただけます。</p>
+            </div>
+        </div>
+    </div>
+
+    <template id="history-item-template">
+        <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+            <div class="flex justify-between items-center mb-3">
+                <span class="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded timestamp"></span>
+                <span class="text-xs font-medium text-indigo-600 word-count"></span>
+            </div>
+            <audio controls class="w-full h-10 mb-3 rounded audio-player"></audio>
+            <div class="bg-slate-50 p-3 rounded-lg text-gray-700 text-sm leading-relaxed transcription-text whitespace-pre-wrap border border-slate-100 mb-3"></div>
+
+            <button class="retry-record-btn w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-md transition-transform transform hover:-translate-y-1 flex justify-center items-center gap-2">
+                <i class="fas fa-microphone-alt"></i> この内容でもう一度スピーチを録音する
+            </button>
+        </div>
+    </template>
+
+    <script>
+        const SPEECH_TIME_LIMIT = 60;
+
+        let isRecording = false;
+        let timeLeft = SPEECH_TIME_LIMIT;
+        let timerInterval;
+        let mediaRecorder;
+        let audioChunks = [];
+        let recognition;
+        let finalTranscript = '';
+        let stream;
+
+        const timerDisplay = document.getElementById('timer-display');
+        const recordBtn = document.getElementById('record-btn');
+        const statusText = document.getElementById('status-text');
+        const progressBarEl = document.getElementById('progress-bar');
+        const liveArea = document.getElementById('live-transcription-area');
+        const finalTextSpan = document.getElementById('final-text');
+        const interimTextSpan = document.getElementById('interim-text');
+        const resultsSection = document.getElementById('results-section');
+        const historyList = document.getElementById('history-list');
+        const clearHistoryBtn = document.getElementById('clear-history-btn');
+        const template = document.getElementById('history-item-template');
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            document.getElementById('unsupported-msg').classList.remove('hidden');
+        } else {
+            try {
+                recognition = new SpeechRecognition();
+                recognition.continuous = true;
+                recognition.interimResults = true;
+                recognition.lang = 'en-US';
+                recognition.onresult = (e) => {
+                    let interim = '';
+                    for (let i = e.resultIndex; i < e.results.length; ++i) {
+                        if (e.results[i].isFinal) finalTranscript += e.results[i][0].transcript + ' ';
+                        else interim += e.results[i][0].transcript;
+                    }
+                    finalTextSpan.innerHTML = finalTranscript;
+                    interimTextSpan.innerHTML = interim;
+                };
+                recognition.onend = () => {
+                    if (isRecording && recognition) {
+                        try { recognition.start(); } catch (e) {}
+                    }
+                };
+            } catch (e) {
+                console.warn("Speech recognition init failed:", e);
+                recognition = null;
+            }
+        }
+
+        function formatTime(s) {
+            return `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
+        }
+
+        function updateRetryButtons(recording) {
+            document.querySelectorAll('.retry-record-btn').forEach(btn => {
+                if (recording) {
+                    btn.innerHTML = '<i class="fas fa-stop animate-pulse"></i> 録音を停止する';
+                    btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+                    btn.classList.add('bg-rose-500', 'hover:bg-rose-600');
+                } else {
+                    btn.innerHTML = '<i class="fas fa-microphone-alt"></i> この内容でもう一度スピーチを録音する';
+                    btn.classList.remove('bg-rose-500', 'hover:bg-rose-600');
+                    btn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+                }
+            });
+        }
+
+        async function startRecording() {
+            if (isRecording) return;
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioChunks = [];
+
+                mediaRecorder = new MediaRecorder(stream);
+
+                mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+                mediaRecorder.onstop = handleRecordingStop;
+                mediaRecorder.start();
+
+                if (recognition) {
+                    finalTranscript = '';
+                    finalTextSpan.innerHTML = '';
+                    interimTextSpan.innerHTML = '';
+                    try { recognition.start(); } catch (e) {}
+                }
+
+                isRecording = true;
+                updateRetryButtons(true);
+                timeLeft = SPEECH_TIME_LIMIT;
+                timerDisplay.textContent = formatTime(timeLeft);
+                timerDisplay.classList.add('text-rose-500');
+                recordBtn.classList.replace('bg-indigo-600', 'recording-active');
+                recordBtn.classList.replace('hover:bg-indigo-700', 'hover:bg-rose-600');
+                recordBtn.innerHTML = '<i class="fas fa-stop text-3xl mb-1"></i><span class="text-xs font-bold uppercase tracking-wider">Stop</span>';
+                statusText.textContent = "録音中... スピーチをしてください";
+                statusText.classList.replace('text-slate-500', 'text-rose-500');
+                liveArea.classList.remove('hidden');
+                progressBarEl.style.width = '100%';
+
+                timerInterval = setInterval(() => {
+                    timeLeft--;
+                    timerDisplay.textContent = formatTime(timeLeft);
+                    progressBarEl.style.width = `${(timeLeft/SPEECH_TIME_LIMIT)*100}%`;
+                    if (timeLeft <= 10) timerDisplay.classList.add('animate-pulse');
+                    if (timeLeft <= 0) stopRecording();
+                }, 1000);
+            } catch (err) {
+                alert("マイクへのアクセスが拒否されたか、エラーが発生しました。");
+            }
+        }
+
+        function stopRecording() {
+            if (!isRecording) return;
+            clearInterval(timerInterval);
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+            if (recognition) { try { recognition.stop(); } catch (e) {} }
+            if (stream) stream.getTracks().forEach(t => t.stop());
+
+            isRecording = false;
+            updateRetryButtons(false);
+            timerDisplay.classList.remove('text-rose-500', 'animate-pulse');
+            timerDisplay.textContent = "01:00";
+            recordBtn.classList.replace('recording-active', 'bg-indigo-600');
+            recordBtn.classList.replace('hover:bg-rose-600', 'hover:bg-indigo-700');
+            recordBtn.innerHTML = '<i class="fas fa-microphone text-3xl mb-1"></i><span class="text-xs font-bold uppercase tracking-wider">Start</span>';
+            statusText.textContent = "処理中...";
+            statusText.classList.replace('text-rose-500', 'text-slate-500');
+            progressBarEl.style.width = '100%';
+        }
+
+        function handleRecordingStop() {
+            liveArea.classList.add('hidden');
+            statusText.textContent = "準備完了";
+
+            const mimeType = mediaRecorder.mimeType || '';
+            const audioBlob = new Blob(audioChunks, { type: mimeType });
+            const audioUrl = URL.createObjectURL(audioBlob);
+            addResultToHistory(audioUrl, finalTranscript);
+        }
+
+        function addResultToHistory(audioUrl, text) {
+            resultsSection.classList.remove('hidden');
+            const clone = template.content.cloneNode(true);
+            const now = new Date();
+            const timeStr = `${now.getFullYear()}/${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getDate().toString().padStart(2,'0')} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+            const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
+            const timeSpent = SPEECH_TIME_LIMIT - timeLeft;
+            const wpm = timeSpent > 0 ? Math.round((wordCount/timeSpent)*60) : 0;
+
+            clone.querySelector('.timestamp').textContent = timeStr;
+            clone.querySelector('.word-count').textContent = `${wordCount} words (約 ${wpm} WPM)`;
+            clone.querySelector('.audio-player').src = audioUrl;
+
+            const textEl = clone.querySelector('.transcription-text');
+            textEl.textContent = text.trim() || "(音声が認識されませんでした)";
+
+            const retryBtn = clone.querySelector('.retry-record-btn');
+
+            if (!text.trim()) {
+                textEl.classList.add('text-slate-400', 'italic');
+            }
+
+            retryBtn.addEventListener('click', () => isRecording ? stopRecording() : startRecording());
+            historyList.insertBefore(clone, historyList.firstChild);
+        }
+
+        clearHistoryBtn.addEventListener('click', () => {
+            if (confirm('すべての録音履歴を削除してもよろしいですか？')) {
+                historyList.innerHTML = ''; 
+                resultsSection.classList.add('hidden'); 
+            }
+        });
+
+        recordBtn.addEventListener('click', () => isRecording ? stopRecording() : startRecording());
+
+    </script>
+</body>
+</html>
